@@ -1,0 +1,8 @@
+{
+    "userspace_version": "1.1",
+    "build_targets": [
+        ["epomaker/luma40", "planck"],
+        ["kprepublic/bm40hsrgb/rev1", "planck"],
+        ["framework/ansi", "custom"]
+    ]
+}

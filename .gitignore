@@ -1,0 +1,7 @@
+epomaker_qmk_firmware/
+qmk_firmware/
+.worktrees/
+*.bin
+*.hex
+*.uf2
+.build/
