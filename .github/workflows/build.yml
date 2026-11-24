@@ -1,0 +1,128 @@
+name: Build firmware
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  userspace:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/qmk/qmk_cli
+      # The qmk_cli image runs as `qmk`; the mounted workspace is owned by the
+      # runner user, so build as root and mark the tree safe for git.
+      options: --user root
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: luma40
+            target: epomaker/luma40:planck
+            out: epomaker_luma40_planck.bin
+          - name: bm40
+            target: kprepublic/bm40hsrgb/rev1:planck
+            out: kprepublic_bm40hsrgb_rev1_planck.hex
+    steps:
+      - name: Checkout userspace
+        uses: actions/checkout@v4
+        with:
+          # ${{ github.repository }} rather than a hardcoded slug so pull
+          # requests from forks build the fork's keymaps.
+          path: userspace
+
+      - name: Checkout QMK (carlosedp fork)
+        uses: actions/checkout@v4
+        with:
+          repository: carlosedp/qmk_firmware
+          ref: master
+          fetch-depth: 1
+          submodules: recursive
+          path: qmk
+
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory '*'
+
+      - name: Build ${{ matrix.target }}
+        env:
+          QMK_HOME: ${{ github.workspace }}/qmk
+          QMK_USERSPACE: ${{ github.workspace }}/userspace/qmk_userspace
+        run: make -C "$QMK_HOME" -j"$(nproc)" ${{ matrix.target }}
+
+      - name: Upload ${{ matrix.name }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: userspace/qmk_userspace/${{ matrix.out }}
+          if-no-files-found: error
+
+  framework16:
+    name: framework16
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/qmk/qmk_cli
+      options: --user root
+    steps:
+      - name: Checkout userspace
+        uses: actions/checkout@v4
+        with:
+          path: userspace
+
+      - name: Checkout QMK (FrameworkComputer v0.3.1)
+        uses: actions/checkout@v4
+        with:
+          repository: FrameworkComputer/qmk_firmware
+          ref: v0.3.1
+          fetch-depth: 1
+          submodules: recursive
+          path: qmk
+
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory '*'
+
+      # v0.3.1's CLI calls ast.Num, removed in Python 3.12, and the qmk_cli
+      # image now ships 3.14. Build the v0.3.1 tree under a 3.11 interpreter,
+      # with the same CLI version the image pins.
+      - name: Install Python 3.11 CLI
+        run: |
+          py=3.11.18
+          pbs=20261124
+          arch=x86_64-unknown-linux-gnu-install_only.tar.gz
+          base=https://github.com/astral-sh/python-build-standalone/releases
+          base=$base/download
+          curl -fsSL "$base/$pbs/cpython-$py+$pbs-$arch" -o /tmp/py.tgz
+          mkdir -p /opt/python311
+          tar -xzf /tmp/py.tgz -C /opt/python311 --strip-components=1
+          /opt/python311/bin/python3.11 -m venv /opt/qmk311
+          /opt/qmk311/bin/pip install --no-cache-dir -q \
+            -r qmk/requirements.txt qmk==1.2.0
+          echo /opt/qmk311/bin >> "$GITHUB_PATH"
+
+      # v0.3.1 predates userspace support, so the keymap is passed in via
+      # KEYMAP_PATH/KEYMAP_C and builddefs/build_keyboard.mk is invoked
+      # directly instead of `make framework/ansi:custom`. SILENT must be set
+      # because build_keyboard.mk is used without the top-level Makefile.
+      - name: Build framework/ansi:custom
+        env:
+          QMK_HOME: ${{ github.workspace }}/qmk
+        run: |
+          keymaps=userspace/qmk_userspace/keyboards/framework/ansi/keymaps
+          make -C "$QMK_HOME" -j"$(nproc)" -r -R \
+            -f builddefs/build_keyboard.mk \
+            KEYBOARD=framework/ansi \
+            KEYMAP=custom \
+            KEYMAP_PATH="$PWD/$keymaps/custom" \
+            KEYMAP_C="$PWD/$keymaps/custom/keymap.c" \
+            SILENT=false
+
+      - name: Upload framework16
+        uses: actions/upload-artifact@v4
+        with:
+          name: framework16
+          path: qmk/framework_ansi_custom.uf2
+          if-no-files-found: error
