@@ -24,12 +24,14 @@
 - Stale `.git/index.lock` files appear frequently; safe to remove
 - Upstream remote is FrameworkComputer/qmk_firmware; origin is the adamlindsay fork, which is no longer where the keymap lives — that is `qmk_userspace/`
 - `upstream/master` is a stale 2023 QMK export and carries nothing — releases are tags (`v0.3.1`, 2025-07-21, still newest) and Framework's work sits on unmerged `fl16-*` topic branches. `fl16-power` (power/suspend) is the only actively developed one. Check `git tag --sort=-v:refname` and branch dates, never `master`
-- This directory is not a git repo (`qmk_firmware/`, `epomaker_qmk_firmware/`, and `qmk_userspace/` are). Edits to `AGENTS.md` and `.pi/skills/` are unversioned local files, so they cannot go through a PR
+- This directory is the `adamlindsay/keyboards` repo (`origin`), and it tracks `AGENTS.md`, `.pi/skills/`, the `qmk_userspace/` keymaps, `flash-framework.sh`, `plans/`, and the CI workflow — so edits here are versioned and go through a PR like anywhere else. Only `qmk_firmware/` and `epomaker_qmk_firmware/` are out-of-repo checkouts (both git-ignored); they are the untouched upstream trees, not places to edit
 
 ## Framework 16 (ANSI)
 - **Separation:** `qmk_userspace/keyboards/framework/ansi/keymaps/custom/keymap.c` is the source of truth; `qmk_firmware/` stays an untouched `FrameworkComputer/qmk_firmware` v0.3.1 checkout
 - **Build:** Inside `qmk_firmware/`, `nix-shell -p "(python312.withPackages ...)" gcc-arm-embedded gnumake --run "QMK_HOME=$PWD QMK_BIN=/tmp/qmk312 make -j$(nproc) -r -R -f builddefs/build_keyboard.mk KEYBOARD=framework/ansi KEYMAP=custom KEYMAP_PATH=<userspace keymap dir> KEYMAP_C=<that dir>/keymap.c SILENT=false"` — `/tmp/qmk312` is the Python 3.12 shim described in the skill
 - **Flash:** `qmk_userspace/flash-framework.sh framework_ansi_custom.uf2`, or FN+Backspace for the bootloader and copy the `.uf2` to the RP2040 mass storage device
+- **RGB keys:** FN+W `RGB_TOG` is the only real off switch; FN+E/FN+D change effect and force RGB back on if it was off (`framework.c:278-284`); FN+R/F, T/G, Y/H, U/J are hue, sat, speed, brightness ±. Brightness 0 is not off — the animation runs and `rgb_matrix_indicators_advanced_user` still paints the F-row groups
+- **`BL_*` keys are not what they sound like:** `keyboards/framework/rules.mk:12` enables the GP25 PWM white backlight for the whole family, but `framework.c:275-301` intercepts `BL_STEP` and repurposes it to step the **RGB matrix** value through 0/85/170/255. Only `BL_BRTG` reaches the white PWM. Do not add a white-backlight step key expecting it to work
 
 ## Epomaker Luma40
 - **Separation:** `qmk_firmware/` is Framework 16 only. Luma40 builds from `epomaker_qmk_firmware/` (`carlosedp/qmk_firmware` `master`, untouched) with `QMK_USERSPACE` pointing at `qmk_userspace/` (`keyboards/epomaker/luma40/keymaps/planck/`)
